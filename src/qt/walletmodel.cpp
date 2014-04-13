@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2013 The Bitcoin developers
+// Copyright (c) 2011-2014 The Bitcoin developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -419,8 +419,17 @@ static void NotifyAddressBookChanged(WalletModel *walletmodel, CWallet *wallet,
                               Q_ARG(int, status));
 }
 
+// queue notifications to show a non freezing progress dialog e.g. for rescan
+static bool fQueueNotifications = false;
+static std::vector<std::pair<uint256, ChangeType> > vQueueNotifications;
 static void NotifyTransactionChanged(WalletModel *walletmodel, CWallet *wallet, const uint256 &hash, ChangeType status)
 {
+    if (fQueueNotifications)
+    {
+        vQueueNotifications.push_back(make_pair(hash, status));
+        return;
+    }
+
     QString strHash = QString::fromStdString(hash.GetHex());
 
     qDebug() << "NotifyTransactionChanged : " + strHash + " status= " + QString::number(status);
@@ -429,12 +438,32 @@ static void NotifyTransactionChanged(WalletModel *walletmodel, CWallet *wallet, 
                               Q_ARG(int, status));
 }
 
+static void ShowProgress(WalletModel *walletmodel, const std::string &title, int nProgress)
+{
+    // emits signal "showProgress"
+    QMetaObject::invokeMethod(walletmodel, "showProgress", Qt::QueuedConnection,
+                              Q_ARG(QString, QString::fromStdString(title)),
+                              Q_ARG(int, nProgress));
+
+    if (nProgress == 0)
+        fQueueNotifications = true;
+
+    if (nProgress == 100)
+    {
+        fQueueNotifications = false;
+        BOOST_FOREACH(const PAIRTYPE(uint256, ChangeType)& notification, vQueueNotifications)
+            NotifyTransactionChanged(walletmodel, NULL, notification.first, notification.second);
+        std::vector<std::pair<uint256, ChangeType> >().swap(vQueueNotifications); // clear
+    }
+}
+
 void WalletModel::subscribeToCoreSignals()
 {
     // Connect signals to wallet
     wallet->NotifyStatusChanged.connect(boost::bind(&NotifyKeyStoreStatusChanged, this, _1));
     wallet->NotifyAddressBookChanged.connect(boost::bind(NotifyAddressBookChanged, this, _1, _2, _3, _4, _5, _6));
     wallet->NotifyTransactionChanged.connect(boost::bind(NotifyTransactionChanged, this, _1, _2, _3));
+    wallet->ShowProgress.connect(boost::bind(ShowProgress, this, _1, _2));
 }
 
 void WalletModel::unsubscribeFromCoreSignals()
@@ -443,6 +472,7 @@ void WalletModel::unsubscribeFromCoreSignals()
     wallet->NotifyStatusChanged.disconnect(boost::bind(&NotifyKeyStoreStatusChanged, this, _1));
     wallet->NotifyAddressBookChanged.disconnect(boost::bind(NotifyAddressBookChanged, this, _1, _2, _3, _4, _5, _6));
     wallet->NotifyTransactionChanged.disconnect(boost::bind(NotifyTransactionChanged, this, _1, _2, _3));
+    wallet->ShowProgress.disconnect(boost::bind(ShowProgress, this, _1, _2));
 }
 
 // WalletModel::UnlockContext implementation
@@ -494,9 +524,17 @@ void WalletModel::getOutputs(const std::vector<COutPoint>& vOutpoints, std::vect
     BOOST_FOREACH(const COutPoint& outpoint, vOutpoints)
     {
         if (!wallet->mapWallet.count(outpoint.hash)) continue;
-        COutput out(&wallet->mapWallet[outpoint.hash], outpoint.n, wallet->mapWallet[outpoint.hash].GetDepthInMainChain());
+        int nDepth = wallet->mapWallet[outpoint.hash].GetDepthInMainChain();
+        if (nDepth < 0) continue;
+        COutput out(&wallet->mapWallet[outpoint.hash], outpoint.n, nDepth);
         vOutputs.push_back(out);
     }
+}
+
+bool WalletModel::isSpent(const COutPoint& outpoint) const
+{
+    LOCK(wallet->cs_wallet);
+    return wallet->IsSpent(outpoint.hash, outpoint.n);
 }
 
 // AvailableCoins + LockedCoins grouped by wallet address (put change in one group with wallet address)
@@ -513,7 +551,9 @@ void WalletModel::listCoins(std::map<QString, std::vector<COutput> >& mapCoins) 
     BOOST_FOREACH(const COutPoint& outpoint, vLockedCoins)
     {
         if (!wallet->mapWallet.count(outpoint.hash)) continue;
-        COutput out(&wallet->mapWallet[outpoint.hash], outpoint.n, wallet->mapWallet[outpoint.hash].GetDepthInMainChain());
+        int nDepth = wallet->mapWallet[outpoint.hash].GetDepthInMainChain();
+        if (nDepth < 0) continue;
+        COutput out(&wallet->mapWallet[outpoint.hash], outpoint.n, nDepth);
         vCoins.push_back(out);
     }
 

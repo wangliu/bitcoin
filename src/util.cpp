@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2013 The Bitcoin developers
+// Copyright (c) 2009-2014 The Bitcoin developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -330,7 +330,7 @@ string FormatMoney(int64_t n, bool fPlus)
     int64_t n_abs = (n > 0 ? n : -n);
     int64_t quotient = n_abs/COIN;
     int64_t remainder = n_abs%COIN;
-    string str = strprintf("%"PRId64".%08"PRId64, quotient, remainder);
+    string str = strprintf("%d.%08d", quotient, remainder);
 
     // Right-trim excess zeros before the decimal point:
     int nTrim = 0;
@@ -948,15 +948,6 @@ void LogException(std::exception* pex, const char* pszThread)
     LogPrintf("\n%s", message);
 }
 
-void PrintException(std::exception* pex, const char* pszThread)
-{
-    std::string message = FormatException(pex, pszThread);
-    LogPrintf("\n\n************************\n%s\n", message);
-    fprintf(stderr, "\n\n************************\n%s\n", message.c_str());
-    strMiscWarning = message;
-    throw;
-}
-
 void PrintExceptionContinue(std::exception* pex, const char* pszThread)
 {
     std::string message = FormatException(pex, pszThread);
@@ -985,7 +976,7 @@ boost::filesystem::path GetDefaultDataDir()
 #ifdef MAC_OSX
     // Mac
     pathRet /= "Library/Application Support";
-    fs::create_directory(pathRet);
+    TryCreateDirectory(pathRet);
     return pathRet / "Bitcoin";
 #else
     // Unix
@@ -1099,6 +1090,23 @@ bool RenameOver(boost::filesystem::path src, boost::filesystem::path dest)
 #endif /* WIN32 */
 }
 
+
+// Ignores exceptions thrown by boost's create_directory if the requested directory exists.
+//   Specifically handles case where path p exists, but it wasn't possible for the user to write to the parent directory.
+bool TryCreateDirectory(const boost::filesystem::path& p)
+{
+    try
+    {
+        return boost::filesystem::create_directory(p);
+    } catch (boost::filesystem::filesystem_error) {
+        if (!boost::filesystem::exists(p) || !boost::filesystem::is_directory(p))
+            throw;
+    }
+
+    // create_directory didn't create the directory, it had to have existed already
+    return false;
+}
+
 void FileCommit(FILE *fileout)
 {
     fflush(fileout); // harmless if redundantly called
@@ -1114,16 +1122,6 @@ void FileCommit(FILE *fileout)
     fsync(fileno(fileout));
     #endif
 #endif
-}
-
-int GetFilesize(FILE* file)
-{
-    int nSavePos = ftell(file);
-    int nFilesize = -1;
-    if (fseek(file, 0, SEEK_END) == 0)
-        nFilesize = ftell(file);
-    fseek(file, nSavePos, SEEK_SET);
-    return nFilesize;
 }
 
 bool TruncateFile(FILE *file, unsigned int length) {
@@ -1204,7 +1202,7 @@ void ShrinkDebugFile()
     // Scroll debug.log if it's getting too big
     boost::filesystem::path pathLog = GetDataDir() / "debug.log";
     FILE* file = fopen(pathLog.string().c_str(), "r");
-    if (file && GetFilesize(file) > 10 * 1000000)
+    if (file && boost::filesystem::file_size(pathLog) > 10 * 1000000)
     {
         // Restart the file with some of the end
         char pch[200000];
@@ -1222,13 +1220,6 @@ void ShrinkDebugFile()
     else if (file != NULL)
         fclose(file);
 }
-
-
-
-
-
-
-
 
 //
 // "Never go to sea with two chronometers; take one or three."
@@ -1278,7 +1269,7 @@ void AddTimeData(const CNetAddr& ip, int64_t nTime)
     // Add data
     static CMedianFilter<int64_t> vTimeOffsets(200,0);
     vTimeOffsets.input(nOffsetSample);
-    LogPrintf("Added time data, samples %d, offset %+"PRId64" (%+"PRId64" minutes)\n", vTimeOffsets.size(), nOffsetSample, nOffsetSample/60);
+    LogPrintf("Added time data, samples %d, offset %+d (%+d minutes)\n", vTimeOffsets.size(), nOffsetSample, nOffsetSample/60);
     if (vTimeOffsets.size() >= 5 && vTimeOffsets.size() % 2 == 1)
     {
         int64_t nMedian = vTimeOffsets.median();
@@ -1313,10 +1304,10 @@ void AddTimeData(const CNetAddr& ip, int64_t nTime)
         }
         if (fDebug) {
             BOOST_FOREACH(int64_t n, vSorted)
-                LogPrintf("%+"PRId64"  ", n);
+                LogPrintf("%+d  ", n);
             LogPrintf("|  ");
         }
-        LogPrintf("nTimeOffset = %+"PRId64"  (%+"PRId64" minutes)\n", nTimeOffset, nTimeOffset/60);
+        LogPrintf("nTimeOffset = %+d  (%+d minutes)\n", nTimeOffset, nTimeOffset/60);
     }
 }
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2009-2013 The Bitcoin developers
+// Copyright (c) 2009-2014 The Bitcoin developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -10,12 +10,6 @@
 #include "protocol.h"
 #include "sync.h"
 #include "util.h"
-#ifdef ENABLE_WALLET
-#include "init.h" // for getinfo
-#include "wallet.h" // for getinfo
-#endif
-
-#include <inttypes.h>
 
 #include <boost/foreach.hpp>
 #include "json/json_spirit_value.h"
@@ -121,7 +115,7 @@ Value getpeerinfo(const Array& params, bool fHelp)
         obj.push_back(Pair("addr", stats.addrName));
         if (!(stats.addrLocal.empty()))
             obj.push_back(Pair("addrlocal", stats.addrLocal));
-        obj.push_back(Pair("services", strprintf("%08"PRIx64, stats.nServices)));
+        obj.push_back(Pair("services", strprintf("%08x", stats.nServices)));
         obj.push_back(Pair("lastsend", (boost::int64_t)stats.nLastSend));
         obj.push_back(Pair("lastrecv", (boost::int64_t)stats.nLastRecv));
         obj.push_back(Pair("bytessent", (boost::int64_t)stats.nSendBytes));
@@ -140,8 +134,7 @@ Value getpeerinfo(const Array& params, bool fHelp)
         if (fStateStats) {
             obj.push_back(Pair("banscore", statestats.nMisbehavior));
         }
-        if (stats.fSyncNode)
-            obj.push_back(Pair("syncnode", true));
+        obj.push_back(Pair("syncnode", stats.fSyncNode));
 
         ret.push_back(obj);
     }

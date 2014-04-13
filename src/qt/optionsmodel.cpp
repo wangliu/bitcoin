@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2013 The Bitcoin developers
+// Copyright (c) 2011-2014 The Bitcoin developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -14,6 +14,7 @@
 #include "init.h"
 #include "main.h"
 #include "net.h"
+#include "txdb.h" // for -dbcache defaults
 #ifdef ENABLE_WALLET
 #include "wallet.h"
 #include "walletdb.h"
@@ -27,6 +28,11 @@ OptionsModel::OptionsModel(QObject *parent) :
     QAbstractListModel(parent)
 {
     Init();
+}
+
+void OptionsModel::addOverriddenOption(const std::string &option)
+{
+    strOverriddenByCommandLine += QString::fromStdString(option) + "=" + QString::fromStdString(mapArgs[option]) + " ";
 }
 
 // Writes all missing QSettings with their default values
@@ -70,23 +76,29 @@ void OptionsModel::Init()
     // by command-line and show this in the UI.
 
     // Main
+    if (!settings.contains("nDatabaseCache"))
+        settings.setValue("nDatabaseCache", (qint64)nDefaultDbCache);
+    if (!SoftSetArg("-dbcache", settings.value("nDatabaseCache").toString().toStdString()))
+        addOverriddenOption("-dbcache");
+
+    if (!settings.contains("nThreadsScriptVerif"))
+        settings.setValue("nThreadsScriptVerif", DEFAULT_SCRIPTCHECK_THREADS);
+    if (!SoftSetArg("-par", settings.value("nThreadsScriptVerif").toString().toStdString()))
+        addOverriddenOption("-par");
+
+    // Wallet
 #ifdef ENABLE_WALLET
     if (!settings.contains("nTransactionFee"))
         settings.setValue("nTransactionFee", 0);
     nTransactionFee = settings.value("nTransactionFee").toLongLong(); // if -paytxfee is set, this will be overridden later in init.cpp
     if (mapArgs.count("-paytxfee"))
-        strOverriddenByCommandLine += "-paytxfee ";
+        addOverriddenOption("-paytxfee");
+
+    if (!settings.contains("bSpendZeroConfChange"))
+        settings.setValue("bSpendZeroConfChange", true);
+    if (!SoftSetBoolArg("-spendzeroconfchange", settings.value("bSpendZeroConfChange").toBool()))
+        addOverriddenOption("-spendzeroconfchange");
 #endif
-
-    if (!settings.contains("nDatabaseCache"))
-        settings.setValue("nDatabaseCache", 25);
-    if (!SoftSetArg("-dbcache", settings.value("nDatabaseCache").toString().toStdString()))
-        strOverriddenByCommandLine += "-dbcache ";
-
-    if (!settings.contains("nThreadsScriptVerif"))
-        settings.setValue("nThreadsScriptVerif", 0);
-    if (!SoftSetArg("-par", settings.value("nThreadsScriptVerif").toString().toStdString()))
-        strOverriddenByCommandLine += "-par ";
 
     // Network
     if (!settings.contains("fUseUPnP"))
@@ -94,9 +106,9 @@ void OptionsModel::Init()
         settings.setValue("fUseUPnP", true);
 #else
         settings.setValue("fUseUPnP", false);
-#endif	
+#endif
     if (!SoftSetBoolArg("-upnp", settings.value("fUseUPnP").toBool()))
-        strOverriddenByCommandLine += "-upnp ";
+        addOverriddenOption("-upnp");
 
     if (!settings.contains("fUseProxy"))
         settings.setValue("fUseProxy", false);
@@ -104,18 +116,18 @@ void OptionsModel::Init()
         settings.setValue("addrProxy", "127.0.0.1:9050");
     // Only try to set -proxy, if user has enabled fUseProxy
     if (settings.value("fUseProxy").toBool() && !SoftSetArg("-proxy", settings.value("addrProxy").toString().toStdString()))
-        strOverriddenByCommandLine += "-proxy ";
+        addOverriddenOption("-proxy");
     if (!settings.contains("nSocksVersion"))
         settings.setValue("nSocksVersion", 5);
     // Only try to set -socks, if user has enabled fUseProxy
     if (settings.value("fUseProxy").toBool() && !SoftSetArg("-socks", settings.value("nSocksVersion").toString().toStdString()))
-        strOverriddenByCommandLine += "-socks ";
+        addOverriddenOption("-socks");
 
     // Display
     if (!settings.contains("language"))
         settings.setValue("language", "");
     if (!SoftSetArg("-lang", settings.value("language").toString().toStdString()))
-        strOverriddenByCommandLine += "-lang";
+        addOverriddenOption("-lang");
 
     language = settings.value("language").toString();
 }
@@ -184,6 +196,8 @@ QVariant OptionsModel::data(const QModelIndex & index, int role) const
             // Todo: Consider to revert back to use just nTransactionFee here, if we don't want
             // -paytxfee to update our QSettings!
             return settings.value("nTransactionFee");
+        case SpendZeroConfChange:
+            return settings.value("bSpendZeroConfChange");
 #endif
         case DisplayUnit:
             return nDisplayUnit;
@@ -273,6 +287,12 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
             nTransactionFee = value.toLongLong();
             settings.setValue("nTransactionFee", (qint64)nTransactionFee);
             emit transactionFeeChanged(nTransactionFee);
+            break;
+        case SpendZeroConfChange:
+            if (settings.value("bSpendZeroConfChange") != value) {
+                settings.setValue("bSpendZeroConfChange", value);
+                setRestartRequired(true);
+            }
             break;
 #endif
         case DisplayUnit:

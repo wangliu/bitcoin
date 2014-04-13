@@ -15,7 +15,8 @@ JSON_TEST_FILES = \
   data/base58_keys_invalid.json \
   data/script_invalid.json \
   data/tx_invalid.json \
-  data/tx_valid.json
+  data/tx_valid.json \
+  data/sighash.json
 
 RAW_TEST_FILES = data/alertTests.raw
 
@@ -45,6 +46,7 @@ test_bitcoin_SOURCES = \
   DoS_tests.cpp \
   getarg_tests.cpp \
   key_tests.cpp \
+  main_tests.cpp \
   miner_tests.cpp \
   mruset_tests.cpp \
   multisig_tests.cpp \

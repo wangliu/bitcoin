@@ -1,5 +1,5 @@
 // Copyright (c) 2010 Satoshi Nakamoto
-// Copyright (c) 2009-2013 The Bitcoin developers
+// Copyright (c) 2009-2014 The Bitcoin developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -17,7 +17,6 @@
 #include <boost/foreach.hpp>
 #include <boost/iostreams/concepts.hpp>
 #include <boost/iostreams/stream.hpp>
-#include <boost/lexical_cast.hpp>
 #include <boost/shared_ptr.hpp>
 #include "json/json_spirit_writer_template.h"
 
@@ -222,7 +221,7 @@ int ReadHTTPMessage(std::basic_istream<char>& stream, map<string,
 // unspecified (HTTP errors and contents of 'error').
 //
 // 1.0 spec: http://json-rpc.org/wiki/specification
-// 1.2 spec: http://groups.google.com/group/json-rpc/web/json-rpc-over-http
+// 1.2 spec: http://jsonrpc.org/historical/json-rpc-over-http.html
 // http://www.codeproject.com/KB/recipes/JSON_Spirit.aspx
 //
 
